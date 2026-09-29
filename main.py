@@ -228,11 +228,12 @@ def _send_email(emailer: Emailer | None, db: Database, reporter: Reporter,
 
 def _crawl_semester_catalog(client: ICourseClient, db: Database,
                             reporter: Reporter) -> None:
-    """Discover semesters on every run and fetch catalogs for new terms.
+    """Discover semesters and refresh the newest term on every run.
 
     Compare API term names with the names stored in ``all_courses``.
     Only terms with a successfully fetched catalog are considered known,
-    so empty or failed fetches are retried on the next run.
+    so empty or failed fetches are retried on the next run. The current
+    semester can gain courses after its first crawl, so it must be refreshed.
     """
     reporter.info("Discovering available semesters from API...")
     try:
@@ -250,12 +251,13 @@ def _crawl_semester_catalog(client: ICourseClient, db: Database,
                   f"{', '.join(t['name'] for t in terms)}")
 
     known_terms = db.list_catalog_terms()
-    new_terms = [term for term in terms if term["name"] not in known_terms]
-    if not new_terms:
-        reporter.info("Skipping catalog crawl (no new semesters).")
-        return
+    current_term = terms[0]["name"]
+    terms_to_crawl = [
+        term for term in terms
+        if term["name"] == current_term or term["name"] not in known_terms
+    ]
 
-    for term_info in new_terms:
+    for term_info in terms_to_crawl:
         code = term_info["code"]
         name = term_info["name"]
         expected = term_info["count"]
@@ -314,7 +316,7 @@ def run():
     client = ICourseClient(vpn)
     email_items: list = []
 
-    # Discover new semesters every run; only fetch catalogs not yet stored.
+    # Discover new semesters and refresh the current term's course list.
     _crawl_semester_catalog(client, db, reporter)
 
     if not config.COURSE_IDS:
