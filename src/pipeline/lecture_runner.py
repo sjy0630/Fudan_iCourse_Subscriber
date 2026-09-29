@@ -146,10 +146,13 @@ class LectureRunner:
 
         # ── Phase F — bucketed-prompt LLM summary ──────────────────────
         if not transcript.strip():
-            self._reporter.info("    Empty transcript, skipping summary.")
+            self._reporter.info(
+                "    Empty transcript, will retry on a later run."
+            )
             self._release_audio(sub_id)
-            self._db.mark_processed(sub_id)
-            self._db.clear_error(sub_id)
+            self._db.update_error(
+                sub_id, "empty_transcript", "audio decoded but ASR returned no text"
+            )
             return None
 
         summary = self._summarize(
@@ -383,5 +386,4 @@ class LectureRunner:
             self._reporter.info(
                 f"    [WARN] audio release failed: {type(e).__name__}: {e}"
             )
-
 

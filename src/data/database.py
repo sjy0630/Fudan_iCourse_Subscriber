@@ -66,6 +66,17 @@ class Database:
                         f"ALTER TABLE ppt_pages ADD COLUMN {col} {typedef}"
                     )
 
+            # Older runs marked an empty ASR result as processed, making it
+            # impossible to retry even if the recording or ASR later improves.
+            # Rows intentionally skipped for other reasons retain error_stage.
+            self.conn.execute(
+                """UPDATE lectures SET processed_at = NULL
+                   WHERE processed_at IS NOT NULL
+                     AND COALESCE(TRIM(transcript), '') = ''
+                     AND COALESCE(TRIM(summary), '') = ''
+                     AND error_stage IS NULL"""
+            )
+
     def write_meta(self, key: str, value: str):
         """Persist a key-value pair (e.g. COURSE_IDS from CI secret)."""
         with self._lock, self.conn:
