@@ -5,6 +5,7 @@ import subprocess
 
 from src.api.icourse import ICourseClient
 from src.api.webvpn import WebVPNSession
+from src.ai.transcriber import Transcriber
 
 
 COURSE_ID = "37664"
@@ -32,7 +33,8 @@ def main():
         "-headers", headers,
         "-reconnect", "1", "-reconnect_streamed", "1",
         "-reconnect_delay_max", "5",
-        "-i", vpn_url, "-vn", "-af", "volumedetect",
+        "-i", vpn_url, "-vn", "-ar", "16000", "-ac", "1",
+        "-af", "volumedetect",
         "-f", "null", "-",
     ]
     result = subprocess.run(
@@ -45,6 +47,15 @@ def main():
             print(line.strip(), flush=True)
     if result.returncode:
         raise RuntimeError("ffmpeg could not decode the target lecture")
+
+    # Same mono decode, VAD, and recognizer as the production pipeline.
+    # The transcriber reports counts only; never print the private text.
+    transcriber = Transcriber()
+    transcript, segments = transcriber.transcribe_url(
+        vpn_url, http_headers=headers,
+    )
+    print(f"Diagnostic transcript chars: {len(transcript)}", flush=True)
+    print(f"Diagnostic kept segments: {len(segments)}", flush=True)
 
 
 if __name__ == "__main__":

@@ -331,9 +331,12 @@ class Transcriber:
             samples = speech.samples
             seg_start_samples = int(getattr(speech, "start", 0))
             self._vad.pop()
+            self._diagnostic_vad_segments += 1
             stream = self._recognizer.create_stream()
             stream.accept_waveform(SAMPLE_RATE, samples)
             self._recognizer.decode_stream(stream)
+            if stream.result.text.strip():
+                self._diagnostic_asr_nonempty += 1
             text = _postprocess_segment(stream.result.text)
             if text:
                 start_ms = int(seg_start_samples / SAMPLE_RATE * 1000)
@@ -375,6 +378,8 @@ class Transcriber:
         """
         self._init()
         self._reset_vad()
+        self._diagnostic_vad_segments = 0
+        self._diagnostic_asr_nonempty = 0
         t0 = time.time()
         print(f"[Transcriber] Starting {label} at {time.strftime('%H:%M:%S')}",
               flush=True)
@@ -538,6 +543,12 @@ class Transcriber:
             f"avg {speed_kbps:.1f} KB/s, "
             f"{len(transcript)} chars, {len(segments)} segments "
             f"in {elapsed:.0f}s",
+            flush=True,
+        )
+        print(
+            f"[Transcriber] Diagnostic counts: VAD={self._diagnostic_vad_segments}, "
+            f"ASR raw nonempty={self._diagnostic_asr_nonempty}, "
+            f"kept={len(segments)}",
             flush=True,
         )
         self._last_transcript = transcript
