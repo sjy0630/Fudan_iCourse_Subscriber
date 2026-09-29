@@ -203,6 +203,19 @@ class Database:
             ).fetchall()
         return {row["sub_id"] for row in rows}
 
+    def get_ineligible_sub_ids(self, course_id: str,
+                               max_errors: int = 3) -> set[str]:
+        """Return completed or retry-exhausted lectures for enumeration."""
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT sub_id FROM lectures
+                   WHERE course_id = ?
+                     AND (processed_at IS NOT NULL
+                          OR COALESCE(error_count, 0) >= ?)""",
+                (course_id, max_errors),
+            ).fetchall()
+        return {row["sub_id"] for row in rows}
+
     def get_unprocessed_lectures(self, course_id: str | None = None,
                                   max_errors: int = 3) -> list[dict]:
         """Return lectures that need (re-)processing.

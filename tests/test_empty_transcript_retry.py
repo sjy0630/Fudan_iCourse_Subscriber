@@ -70,6 +70,14 @@ class EmptyTranscriptRetryTest(unittest.TestCase):
         self.assertIsNone(row["processed_at"])
         self.assertEqual([r["sub_id"] for r in self.db.get_unprocessed_lectures("37664")], ["670119"])
 
+    def test_three_empty_results_stop_automatic_retries(self):
+        for _ in range(2):
+            self.db.update_error("670119", "empty_transcript", "no recognized speech")
+        self.assertNotIn("670119", self.db.get_ineligible_sub_ids("37664"))
+
+        self.db.update_error("670119", "empty_transcript", "no recognized speech")
+        self.assertIn("670119", self.db.get_ineligible_sub_ids("37664"))
+
 
 if __name__ == "__main__":
     unittest.main()
