@@ -332,12 +332,21 @@ class Transcriber:
             seg_start_samples = int(getattr(speech, "start", 0))
             self._vad.pop()
             self._diagnostic_vad_segments += 1
+            self._diagnostic_vad_seconds += len(samples) / SAMPLE_RATE
             stream = self._recognizer.create_stream()
             stream.accept_waveform(SAMPLE_RATE, samples)
             self._recognizer.decode_stream(stream)
-            if stream.result.text.strip():
+            raw_text = stream.result.text
+            self._diagnostic_raw_chars += len(raw_text)
+            self._diagnostic_han_chars += sum(
+                '\u4e00' <= c <= '\u9fff' for c in raw_text
+            )
+            self._diagnostic_latin_chars += sum(
+                ('a' <= c.lower() <= 'z') for c in raw_text
+            )
+            if raw_text.strip():
                 self._diagnostic_asr_nonempty += 1
-            text = _postprocess_segment(stream.result.text)
+            text = _postprocess_segment(raw_text)
             if text:
                 start_ms = int(seg_start_samples / SAMPLE_RATE * 1000)
                 end_ms = int(
@@ -379,7 +388,11 @@ class Transcriber:
         self._init()
         self._reset_vad()
         self._diagnostic_vad_segments = 0
+        self._diagnostic_vad_seconds = 0.0
         self._diagnostic_asr_nonempty = 0
+        self._diagnostic_raw_chars = 0
+        self._diagnostic_han_chars = 0
+        self._diagnostic_latin_chars = 0
         t0 = time.time()
         print(f"[Transcriber] Starting {label} at {time.strftime('%H:%M:%S')}",
               flush=True)
@@ -549,6 +562,14 @@ class Transcriber:
             f"[Transcriber] Diagnostic counts: VAD={self._diagnostic_vad_segments}, "
             f"ASR raw nonempty={self._diagnostic_asr_nonempty}, "
             f"kept={len(segments)}",
+            flush=True,
+        )
+        print(
+            f"[Transcriber] Diagnostic totals: speech_candidate_seconds="
+            f"{self._diagnostic_vad_seconds:.1f}, raw_chars="
+            f"{self._diagnostic_raw_chars}, han_chars="
+            f"{self._diagnostic_han_chars}, latin_chars="
+            f"{self._diagnostic_latin_chars}",
             flush=True,
         )
         self._last_transcript = transcript
