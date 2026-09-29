@@ -1,5 +1,7 @@
 """One-time, read-only diagnosis for the Sep 28 analog electronics recording."""
 
+import time
+
 from src.api.icourse import ICourseClient
 from src.api.webvpn import WebVPNSession
 from src.ai.transcriber import Transcriber
@@ -10,9 +12,18 @@ SUB_ID = "670119"
 
 
 def main():
-    vpn = WebVPNSession()
-    vpn.login()
-    vpn.authenticate_icourse()
+    # Match the production runner's resilience to a cold WebVPN session.
+    for attempt in range(5):
+        try:
+            vpn = WebVPNSession()
+            vpn.login()
+            vpn.authenticate_icourse()
+            break
+        except Exception as exc:
+            print(f"VPN login attempt {attempt + 1}: {type(exc).__name__}")
+            if attempt == 4:
+                raise RuntimeError("VPN authentication failed") from None
+            time.sleep(5)
     client = ICourseClient(vpn)
 
     try:
