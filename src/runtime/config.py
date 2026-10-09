@@ -31,8 +31,8 @@ MODEL_PROVIDERS: list[dict] = [
         "base_url_env": "DASHSCOPE_BASE_URL",
         "default_base_url": "https://api-inference.modelscope.cn/v1/",
         "models": [
-            "deepseek-ai/DeepSeek-V4-Pro",
-            "deepseek-ai/DeepSeek-V4-Flash"
+            "deepseek-ai/DeepSeek-V4-Pro-0813",
+            "deepseek-ai/DeepSeek-V4.1-Flash"
         ],
     },
     {
@@ -164,9 +164,10 @@ VIDEO_DOWNLOAD_CONCURRENCY = int(
     os.environ.get("VIDEO_DOWNLOAD_CONCURRENCY", "2")
 )
 
-# 是否优先使用 iCourse 官方字幕（跳过 ASR 转录）。默认关闭。
+# 优先使用通过完整性检查的官方字幕；缺失或不完整时回退 ASR。
+# 设置 USE_OFFICIAL_TRANSCRIPT=0 可关闭。
 USE_OFFICIAL_TRANSCRIPT = (
-    os.environ.get("USE_OFFICIAL_TRANSCRIPT", "").strip().lower()
+    os.environ.get("USE_OFFICIAL_TRANSCRIPT", "true").strip().lower()
     in ("1", "true", "yes")
 )
 
