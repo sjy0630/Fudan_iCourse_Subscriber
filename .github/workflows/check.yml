@@ -1,4 +1,4 @@
-name: Read-only playback diagnosis
+name: Bounded read-only audio sample diagnosis
 on:
   workflow_dispatch:
 permissions:
@@ -6,16 +6,30 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install authentication dependencies
-        run: pip install requests pycryptodome
-      - name: Read sanitized playback metadata
+        run: pip install requests pycryptodome sherpa-onnx numpy
+      - name: Install ffmpeg if unavailable
+        run: |
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg
+          fi
+      - name: Restore existing ASR models
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/
+            silero_vad.onnx
+          key: asr-models-sense-voice-2024-07-17
+      - name: Count bounded audio sample results
+        timeout-minutes: 8
         env:
           StuId: ${{ secrets.STUID }}
           UISPsw: ${{ secrets.UISPSW }}
-        run: python -u scripts/diagnose_playback.py
+        run: python -u scripts/diagnose_audio_samples.py
