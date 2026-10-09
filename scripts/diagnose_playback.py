@@ -5,14 +5,16 @@ import os
 import re
 import sys
 import time
+import unicodedata
+from collections import Counter
 from pathlib import Path
+from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api.webvpn import WebVPNSession
 from src.runtime import config
 
-TARGETS = [('37664', '670119'), ('39518', '678137'),
-           ('40322', '677927'), ('39532', '678206')]
+TARGETS = [('37664', '670119'), ('38713', None)]
 SAFE_MESSAGES = {'success', 'Success', 'ok', 'OK', '成功', '操作成功',
                  '请求成功', '视频未到开放时间', '视频未到开放时间！',
                  '视频未到开放时间!', '未登录', '登录已过期', '登录失效',
@@ -60,6 +62,84 @@ def media_presence(value):
                 if re.search(r'\.' + extension + r'(?:[?&#\s"\']|$)', current, re.I):
                     flags[f'has_{extension}_path'] = True
     return flags
+
+
+def video_source_stats(payload):
+    sources = payload.get('video_list') if isinstance(payload, dict) else None
+    entries = list(sources.items()) if isinstance(sources, dict) else list(enumerate(sources)) if isinstance(sources, list) else []
+    output = []
+    safe_names = {'teacher', 'student', 'ppt', 'screen', 'blackboard', 'camera',
+                  'video', 'audio', 'main', 'preview', 'now', 'normal', 'hd', 'sd'}
+    for index, (key, value) in enumerate(entries, 1):
+        key = str(key)
+        safe_key = key if re.fullmatch(r'\d{1,8}', key) or key in safe_names else '[redacted name]'
+        suffixes = set()
+        pending = [value]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, dict):
+                pending.extend(item.values())
+            elif isinstance(item, list):
+                pending.extend(item)
+            elif isinstance(item, str) and (item.startswith(('http://', 'https://', '/'))):
+                try:
+                    suffix = Path(urlsplit(item).path).suffix.lower()
+                except ValueError:
+                    suffix = ''
+                suffixes.add(suffix if suffix in {'.mp4', '.m3u8', '.mp3', '.m4a', '.aac', '.flv', '.ts', '.webm', '.jpg', '.png'} else 'none_or_other')
+        output.append({'entry_number': index, 'source_key': safe_key,
+                       'value_type': type(value).__name__,
+                       'path_suffix_types': sorted(suffixes), **media_presence(value)})
+    return output
+
+
+def transcript_quality(content):
+    texts = [row['Text'] for row in content if isinstance(row, dict)
+             and isinstance(row.get('Text'), str) and row['Text'].strip()] if isinstance(content, list) else []
+    normalized = [''.join(char for char in text if not char.isspace()
+                          and not unicodedata.category(char).startswith('P')) for text in texts]
+    normalized = [text for text in normalized if text]
+    frequencies = Counter(normalized)
+    top_count = max(frequencies.values(), default=0)
+    all_text = ''.join(texts)
+    return {'nonempty_text_count': len(texts),
+            'text_char_count': len(all_text),
+            'han_char_count': len(re.findall(r'[\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0002fa1f]', all_text)),
+            'latin_char_count': len(re.findall(r'[A-Za-z]', all_text)),
+            'normalized_nonempty_count': len(normalized),
+            'normalized_char_count': sum(map(len, normalized)),
+            'unique_normalized_text_count': len(frequencies),
+            'unique_normalized_text_ratio': round(len(frequencies) / len(normalized), 6) if normalized else 0,
+            'most_repeated_text_count': top_count,
+            'most_repeated_text_share': round(top_count / len(normalized), 6) if normalized else 0,
+            'single_character_text_count': sum(len(text) == 1 for text in normalized)}
+
+
+def resolve_target(vpn, course_id):
+    metadata, data = read_json(vpn, '/courseapi/v3/multi-search/get-course-detail',
+                               {'course_id': course_id})
+    candidates = []
+    payload = data.get('data') if isinstance(data, dict) else None
+    pending = [payload.get('sub_list')] if isinstance(payload, dict) else []
+    while pending:
+        value = pending.pop()
+        if isinstance(value, dict):
+            title = value.get('sub_title')
+            if isinstance(title, str) and title.startswith('2026-09-23') and 'id' in value:
+                candidates.append(value)
+            else:
+                pending.extend(value.values())
+        elif isinstance(value, list):
+            pending.extend(value)
+    candidates.sort(key=lambda row: str(row.get('playback_status')) != '1')
+    if not candidates:
+        raise RuntimeError('RequestedLectureNotFound')
+    sub_id = str(candidates[0]['id'])
+    if not re.fullmatch(r'\d{1,12}', sub_id):
+        raise RuntimeError('InvalidLectureIdentifier')
+    emit({'course_id': course_id, 'sub_id': sub_id, 'date': '2026-09-23',
+          'endpoint': 'resolve-target', 'candidate_count': len(candidates), **metadata})
+    return sub_id
 
 
 def read_json(vpn, path, params):
@@ -175,6 +255,8 @@ def transcript_timing(content, duration_hint_s):
 def main():
     vpn = login()
     for course_id, sub_id in TARGETS:
+        if sub_id is None:
+            sub_id = resolve_target(vpn, course_id)
         for endpoint, path in (
             ('get-sub-info', '/courseapi/v3/portal-home-setting/get-sub-info'),
             ('get-sub-detail', '/courseapi/v3/multi-search/get-sub-detail'),
@@ -187,6 +269,7 @@ def main():
                 result.update(payload_type=type(payload).__name__, payload_keys=safe_keys(payload),
                               video_list_type=type(video_list).__name__,
                               video_list_count=len(video_list) if isinstance(video_list, (dict, list)) else 0,
+                              video_sources=video_source_stats(payload),
                               **media_presence(payload))
             emit(result)
         metadata, data = read_json(vpn, '/courseapi/v3/web-socket/search-trans-result',
@@ -200,6 +283,9 @@ def main():
                         and isinstance(row.get('Text'), str) and row['Text'].strip()) if isinstance(content, list) else 0
         emit({'course_id': course_id, 'sub_id': sub_id, 'endpoint': 'official-transcript',
               **metadata, 'segment_count': count})
+        if count is not None:
+            emit({'course_id': course_id, 'sub_id': sub_id, 'endpoint': 'transcript-quality',
+                  **transcript_quality(content)})
         ppt = ppt_duration_hint(vpn, course_id, sub_id)
         timing = transcript_timing(content, ppt['ppt_max_offset_s']) if count is not None else {
             'usable_by_20min_rule': False, 'transcript_metadata_ok': False}
