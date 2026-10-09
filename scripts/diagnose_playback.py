@@ -106,6 +106,72 @@ def login():
     raise RuntimeError('AuthenticationFailed')
 
 
+def ppt_duration_hint(vpn, course_id, sub_id):
+    """Read screenshot metadata only; never fetch image URLs."""
+    hint = 0
+    count = 0
+    for page in range(1, 1001):
+        metadata, data = read_json(vpn, '/pptnote/v1/schedule/search-ppt',
+                                   {'course_id': course_id, 'sub_id': sub_id,
+                                    'page': page, 'per_page': 100})
+        if data is None or data.get('code') != 0:
+            return {'ppt_metadata_ok': False, 'ppt_failure': metadata,
+                    'ppt_item_count': count, 'ppt_max_offset_s': hint}
+        rows = data.get('list', [])
+        if not isinstance(rows, list):
+            return {'ppt_metadata_ok': False, 'ppt_item_count': count,
+                    'ppt_max_offset_s': hint}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            try:
+                content = json.loads(row.get('content', '{}'))
+                if not isinstance(content, dict) or not content.get('pptimgurl'):
+                    continue
+                offset = int(row.get('created_sec', 0) or 0)
+            except (ValueError, TypeError):
+                continue
+            hint = max(hint, offset)
+            count += 1
+        if len(rows) < 100:
+            return {'ppt_metadata_ok': True, 'ppt_item_count': count,
+                    'ppt_max_offset_s': hint}
+    return {'ppt_metadata_ok': False, 'ppt_item_count': count,
+            'ppt_max_offset_s': hint, 'ppt_page_limit_reached': True}
+
+
+def transcript_timing(content, duration_hint_s):
+    """Replicate the runner's 20-minute head/gap/tail completeness rule."""
+    segments = []
+    for row in content if isinstance(content, list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get('Text'), str) or not row['Text'].strip():
+            continue
+        try:
+            start = int(row.get('BeginSec', 0)) * 1000
+            end = int(row.get('EndSec', row.get('BeginSec', 0))) * 1000
+        except (ValueError, TypeError):
+            return {'timing_parse_ok': False, 'usable_by_20min_rule': False}
+        segments.append((start, end))
+    segments.sort(key=lambda value: value[0])
+    if not segments:
+        return {'timing_parse_ok': True, 'nonempty_segment_count': 0,
+                'usable_by_20min_rule': False}
+    head_gap = segments[0][0]
+    prev_end = segments[0][1]
+    max_gap = 0
+    for start, end in segments[1:]:
+        max_gap = max(max_gap, start - prev_end)
+        prev_end = max(prev_end, end)
+    tail_gap = max(0, duration_hint_s * 1000 - prev_end) if duration_hint_s else 0
+    usable = head_gap <= 1200000 and max_gap <= 1200000 and tail_gap <= 1200000
+    return {'timing_parse_ok': True, 'nonempty_segment_count': len(segments),
+            'first_start_min': round(head_gap / 60000, 3),
+            'last_end_min': round(prev_end / 60000, 3),
+            'max_internal_gap_min': round(max_gap / 60000, 3),
+            'tail_gap_to_ppt_min': round(tail_gap / 60000, 3),
+            'usable_by_20min_rule': usable}
+
+
 def main():
     vpn = login()
     for course_id, sub_id in TARGETS:
@@ -134,6 +200,13 @@ def main():
                         and isinstance(row.get('Text'), str) and row['Text'].strip()) if isinstance(content, list) else 0
         emit({'course_id': course_id, 'sub_id': sub_id, 'endpoint': 'official-transcript',
               **metadata, 'segment_count': count})
+        ppt = ppt_duration_hint(vpn, course_id, sub_id)
+        timing = transcript_timing(content, ppt['ppt_max_offset_s']) if count is not None else {
+            'usable_by_20min_rule': False, 'transcript_metadata_ok': False}
+        if not ppt['ppt_metadata_ok']:
+            timing['usable_by_20min_rule'] = None
+        emit({'course_id': course_id, 'sub_id': sub_id, 'endpoint': 'transcript-completeness',
+              **ppt, **timing})
 
 
 if __name__ == '__main__':
