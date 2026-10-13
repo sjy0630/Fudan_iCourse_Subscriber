@@ -1,45 +1,31 @@
-name: Read-only diagnosis of mixed ethics summary
+name: Verify single lecture recovery
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  diagnose:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install database and authentication dependencies
-        run: pip install requests pycryptodome
-      - name: Fetch encrypted database snapshot
-        run: |
-          mkdir -p "$RUNNER_TEMP/mixed-ethics-summary"
-          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
-          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/mixed-ethics-summary"
-      - name: Reassemble temporary database
+      - run: pip install pycryptodome
+      - name: Compare backup and saved database read-only
         env:
           STUID: ${{ secrets.STUID }}
           UISPSW: ${{ secrets.UISPSW }}
-        run: >-
-          python scripts/db_shard.py reassemble
-          "$RUNNER_TEMP/mixed-ethics-summary/data"
-          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
-      - name: Inspect counts and matches without printing lesson content
-        timeout-minutes: 10
-        run: >-
-          python -u scripts/diagnose_mixed_ethics_summary.py
-          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
-      - name: Compare official source without downloading media
-        timeout-minutes: 7
-        env:
-          StuId: ${{ secrets.STUID }}
-          UISPsw: ${{ secrets.UISPSW }}
-        run: >-
-          python -u scripts/diagnose_ethics_source.py
-          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
-      - name: Delete temporary encrypted and decrypted database files
+        run: |
+          mkdir -p "$RUNNER_TEMP/ethics-verify/backup" "$RUNNER_TEMP/ethics-verify/latest"
+          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data +refs/heads/backup/ethics-sept9-recovery-38380330875:refs/remotes/origin/ethics-backup
+          git rev-parse refs/remotes/origin/data refs/remotes/origin/ethics-backup
+          git archive refs/remotes/origin/ethics-backup data | tar -x -C "$RUNNER_TEMP/ethics-verify/backup"
+          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/ethics-verify/latest"
+          python scripts/db_shard.py reassemble "$RUNNER_TEMP/ethics-verify/backup/data" "$RUNNER_TEMP/ethics-verify/backup.db"
+          python scripts/db_shard.py reassemble "$RUNNER_TEMP/ethics-verify/latest/data" "$RUNNER_TEMP/ethics-verify/latest.db"
+          python scripts/verify_ethics_sept9.py "$RUNNER_TEMP/ethics-verify/backup.db" "$RUNNER_TEMP/ethics-verify/latest.db"
+      - name: Delete temporary databases
         if: always()
-        run: rm -rf "$RUNNER_TEMP/mixed-ethics-summary"
+        run: rm -rf "$RUNNER_TEMP/ethics-verify"
