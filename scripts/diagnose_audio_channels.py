@@ -53,20 +53,29 @@ def quiet():
 
 
 def login():
-    for attempt in range(3):
+    for attempt in range(5):
+        stage = "webvpn"
         try:
             with quiet():
                 vpn = WebVPNSession()
                 vpn.login()
+                stage = "icourse"
                 vpn.authenticate_icourse()
                 client = ICourseClient(vpn)
+                stage = "verify"
                 if not client.check_alive():
                     raise RuntimeError("SessionNotVerified")
             emit({"login": "verified"})
             return client
         except Exception as exc:
-            emit({"login_error_type": type(exc).__name__})
-            time.sleep(3)
+            emit({"login_error_type": type(exc).__name__, "stage": stage,
+                  "reason_flags": [phrase for phrase in (
+                      "Failed to extract lck", "Authentication failed", "SessionNotVerified",
+                      "iCourse CAS auth failed", "Failed to get authChainCode",
+                      "Failed to get public key", "No loginToken", "Failed to extract ticket",
+                      "Failed to establish WebVPN session") if phrase in str(exc)],
+                  "codes": re.findall(r"(?:code|status)=(\d{3,6})", str(exc))})
+            time.sleep(5)
     raise RuntimeError("LoginFailed")
 
 
