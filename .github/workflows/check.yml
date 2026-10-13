@@ -1,4 +1,4 @@
-name: Recover pending ethics and electronics lectures
+name: Recover analog electronics October 12
 
 on:
   workflow_dispatch:
@@ -42,15 +42,15 @@ jobs:
           mkdir -p recovery/base
           git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
           BASE_SHA=$(git rev-parse refs/remotes/origin/data)
-          git push origin "$BASE_SHA:refs/heads/backup/two-course-backlog-recovery-${GITHUB_RUN_ID}"
+          git push origin "$BASE_SHA:refs/heads/backup/analog-oct12-recovery-${GITHUB_RUN_ID}"
           git archive "$BASE_SHA" data | tar -x -C recovery/base
           python scripts/db_shard.py reassemble recovery/base/data recovery/base.db
-      - name: Regenerate only the four inventoried lectures
+      - name: Regenerate only analog lecture 680154
         env:
           StuId: ${{ secrets.STUID }}
           UISPsw: ${{ secrets.UISPSW }}
           USE_OFFICIAL_TRANSCRIPT: '0'
-          TMPDIR: ${{ runner.temp }}/two-course-backlog-recovery
+          TMPDIR: ${{ runner.temp }}/analog-oct12-recovery
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
           DASHSCOPE_BASE_URL: ${{ secrets.DASHSCOPE_BASE_URL }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -59,7 +59,7 @@ jobs:
           GEMINI_BASE_URL: ${{ secrets.GEMINI_BASE_URL }}
         run: |
           mkdir -p "$TMPDIR"
-          python -u scripts/recover_two_course_backlog.py process recovery/base.db recovery/candidate.db
+          python -u scripts/recover_analog_oct12.py process recovery/base.db recovery/candidate.db
       - name: Apply successful results to the latest encrypted database
         env:
           STUID: ${{ secrets.STUID }}
@@ -74,14 +74,14 @@ jobs:
             mkdir -p recovery/latest
             git archive "$LATEST_SHA" data | tar -x -C recovery/latest
             python scripts/db_shard.py reassemble recovery/latest/data recovery/latest.db
-            python scripts/recover_two_course_backlog.py apply recovery/candidate.db recovery/latest.db
+            python scripts/recover_analog_oct12.py apply recovery/candidate.db recovery/latest.db
             python scripts/db_shard.py shard recovery/latest.db recovery/output
             git worktree add --detach recovery/deploy "$LATEST_SHA"
             cp recovery/output/icourse-index.enc recovery/deploy/data/
             rm -rf recovery/deploy/data/shards
             cp -R recovery/output/shards recovery/deploy/data/shards
             git -C recovery/deploy add data
-            git -C recovery/deploy commit -m 'fix: recover pending ethics and electronics lectures from audio'
+            git -C recovery/deploy commit -m 'fix: recover analog electronics October 12 with a nonempty summary'
             RECOVERY_SHA=$(git -C recovery/deploy rev-parse HEAD)
             git worktree remove recovery/deploy
             if git push --force-with-lease="refs/heads/data:$LATEST_SHA" origin "$RECOVERY_SHA:refs/heads/data"; then
@@ -94,4 +94,4 @@ jobs:
       - name: Delete temporary audio and decrypted databases
         if: always()
         run: |
-          rm -rf recovery "$RUNNER_TEMP/two-course-backlog-recovery"
+          rm -rf recovery "$RUNNER_TEMP/analog-oct12-recovery"
