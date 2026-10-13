@@ -8,6 +8,8 @@ import sys
 TARGETS = {"660912": "38713", "671336": "38713", "664293": "37664", "680154": "37664"}
 KEYS = {"lectures": ("sub_id",), "courses": ("course_id",),
         "ppt_pages": ("sub_id", "page_num"), "all_courses": ("course_id", "term"), "meta": ("key",)}
+TOPICS = {"38713": ("道德", "法律", "人生", "理想", "马克思", "概率", "阿多诺"),
+          "37664": ("电路", "电压", "电流", "二极管", "晶体管", "放大")}
 ALLOWED = {"transcript", "summary", "summary_model", "processed_at", "error_msg", "error_count", "error_stage"}
 
 def emit(**values):
@@ -48,7 +50,8 @@ def verify(before_path, after_path):
                 emit(sub_id=sid, changed_fields=sorted(fields),
                      transcript_chars=len(current['transcript'] or ''),
                      summary_chars=len(current['summary'] or ''),
-                     emailed_at_preserved=previous['emailed_at'] == current['emailed_at'])
+                     emailed_at_preserved=previous['emailed_at'] == current['emailed_at'],
+                     summary_topics={word: (current['summary'] or '').count(word) for word in TOPICS[course_id]})
     emit(verified=bool(valid and changed_targets), changed_targets=changed_targets)
     return 0 if valid and changed_targets else 1
 
