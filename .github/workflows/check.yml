@@ -1,31 +1,40 @@
-name: Verify single lecture recovery
+name: Inventory pending ethics and electronics lectures
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  verify:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install pycryptodome
-      - name: Compare backup and saved database read-only
+      - name: Install database decryption dependency
+        run: pip install requests pycryptodome
+      - name: Fetch encrypted database snapshot
+        run: |
+          mkdir -p "$RUNNER_TEMP/mixed-ethics-summary"
+          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
+          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/mixed-ethics-summary"
+      - name: Reassemble temporary database
         env:
           STUID: ${{ secrets.STUID }}
           UISPSW: ${{ secrets.UISPSW }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/ethics-verify/backup" "$RUNNER_TEMP/ethics-verify/latest"
-          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data +refs/heads/backup/ethics-sept9-recovery-38380330875:refs/remotes/origin/ethics-backup
-          git rev-parse refs/remotes/origin/data refs/remotes/origin/ethics-backup
-          git archive refs/remotes/origin/ethics-backup data | tar -x -C "$RUNNER_TEMP/ethics-verify/backup"
-          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/ethics-verify/latest"
-          python scripts/db_shard.py reassemble "$RUNNER_TEMP/ethics-verify/backup/data" "$RUNNER_TEMP/ethics-verify/backup.db"
-          python scripts/db_shard.py reassemble "$RUNNER_TEMP/ethics-verify/latest/data" "$RUNNER_TEMP/ethics-verify/latest.db"
-          python scripts/verify_ethics_sept9.py "$RUNNER_TEMP/ethics-verify/backup.db" "$RUNNER_TEMP/ethics-verify/latest.db"
-      - name: Delete temporary databases
+        run: >-
+          python scripts/db_shard.py reassemble
+          "$RUNNER_TEMP/mixed-ethics-summary/data"
+          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
+      - name: Inventory two course histories
+        timeout-minutes: 10
+        env:
+          StuId: ${{ secrets.STUID }}
+          UISPsw: ${{ secrets.UISPSW }}
+        run: >-
+          python -u scripts/inventory_two_courses.py
+          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
+      - name: Delete temporary encrypted and decrypted database files
         if: always()
-        run: rm -rf "$RUNNER_TEMP/ethics-verify"
+        run: rm -rf "$RUNNER_TEMP/mixed-ethics-summary"
