@@ -12,8 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install database decryption dependency
-        run: pip install pycryptodome
+      - name: Install database and authentication dependencies
+        run: pip install requests pycryptodome
       - name: Fetch encrypted database snapshot
         run: |
           mkdir -p "$RUNNER_TEMP/mixed-ethics-summary"
@@ -31,6 +31,14 @@ jobs:
         timeout-minutes: 10
         run: >-
           python -u scripts/diagnose_mixed_ethics_summary.py
+          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
+      - name: Compare official source without downloading media
+        timeout-minutes: 7
+        env:
+          StuId: ${{ secrets.STUID }}
+          UISPsw: ${{ secrets.UISPSW }}
+        run: >-
+          python -u scripts/diagnose_ethics_source.py
           "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
       - name: Delete temporary encrypted and decrypted database files
         if: always()
