@@ -5,7 +5,7 @@ from pathlib import Path
 import sqlite3
 import sys
 
-TARGETS = {"660912": "38713", "671336": "38713", "664293": "37664", "680154": "37664"}
+TARGETS = {"680154": "37664"}
 KEYS = {"lectures": ("sub_id",), "courses": ("course_id",),
         "ppt_pages": ("sub_id", "page_num"), "all_courses": ("course_id", "term"), "meta": ("key",)}
 TOPICS = {"38713": ("道德", "法律", "人生", "理想", "马克思", "概率", "阿多诺"),

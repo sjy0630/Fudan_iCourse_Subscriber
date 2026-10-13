@@ -1,4 +1,4 @@
-name: Verify two course backlog recovery
+name: Verify analog October 12 retry
 on:
   workflow_dispatch:
 permissions:
@@ -19,7 +19,7 @@ jobs:
           UISPSW: ${{ secrets.UISPSW }}
         run: |
           mkdir -p "$RUNNER_TEMP/backlog-verify/backup" "$RUNNER_TEMP/backlog-verify/latest"
-          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data +refs/heads/backup/two-course-backlog-recovery-38390615872:refs/remotes/origin/ethics-backup
+          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data +refs/heads/backup/analog-oct12-recovery-38395171456:refs/remotes/origin/ethics-backup
           git rev-parse refs/remotes/origin/data refs/remotes/origin/ethics-backup
           git archive refs/remotes/origin/ethics-backup data | tar -x -C "$RUNNER_TEMP/backlog-verify/backup"
           git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/backlog-verify/latest"
