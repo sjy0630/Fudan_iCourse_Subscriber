@@ -1,40 +1,31 @@
-name: Inventory pending ethics and electronics lectures
+name: Verify two course backlog recovery
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  diagnose:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install database decryption dependency
-        run: pip install requests pycryptodome
-      - name: Fetch encrypted database snapshot
-        run: |
-          mkdir -p "$RUNNER_TEMP/mixed-ethics-summary"
-          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
-          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/mixed-ethics-summary"
-      - name: Reassemble temporary database
+      - run: pip install pycryptodome
+      - name: Compare backup and saved database read-only
         env:
           STUID: ${{ secrets.STUID }}
           UISPSW: ${{ secrets.UISPSW }}
-        run: >-
-          python scripts/db_shard.py reassemble
-          "$RUNNER_TEMP/mixed-ethics-summary/data"
-          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
-      - name: Inventory two course histories
-        timeout-minutes: 10
-        env:
-          StuId: ${{ secrets.STUID }}
-          UISPsw: ${{ secrets.UISPSW }}
-        run: >-
-          python -u scripts/inventory_two_courses.py
-          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
-      - name: Delete temporary encrypted and decrypted database files
+        run: |
+          mkdir -p "$RUNNER_TEMP/backlog-verify/backup" "$RUNNER_TEMP/backlog-verify/latest"
+          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data +refs/heads/backup/two-course-backlog-recovery-38390615872:refs/remotes/origin/ethics-backup
+          git rev-parse refs/remotes/origin/data refs/remotes/origin/ethics-backup
+          git archive refs/remotes/origin/ethics-backup data | tar -x -C "$RUNNER_TEMP/backlog-verify/backup"
+          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/backlog-verify/latest"
+          python scripts/db_shard.py reassemble "$RUNNER_TEMP/backlog-verify/backup/data" "$RUNNER_TEMP/backlog-verify/backup.db"
+          python scripts/db_shard.py reassemble "$RUNNER_TEMP/backlog-verify/latest/data" "$RUNNER_TEMP/backlog-verify/latest.db"
+          python scripts/verify_backlog_recovery.py "$RUNNER_TEMP/backlog-verify/backup.db" "$RUNNER_TEMP/backlog-verify/latest.db"
+      - name: Delete temporary databases
         if: always()
-        run: rm -rf "$RUNNER_TEMP/mixed-ethics-summary"
+        run: rm -rf "$RUNNER_TEMP/backlog-verify"
