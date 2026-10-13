@@ -1,4 +1,4 @@
-name: Read-only playback metadata diagnosis
+name: Read-only diagnosis of mixed ethics summary
 on:
   workflow_dispatch:
 permissions:
@@ -6,17 +6,32 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install authentication dependencies
-        run: pip install requests pycryptodome
-      - name: Inspect playback metadata only
-        timeout-minutes: 10
+      - name: Install database decryption dependency
+        run: pip install pycryptodome
+      - name: Fetch encrypted database snapshot
+        run: |
+          mkdir -p "$RUNNER_TEMP/mixed-ethics-summary"
+          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
+          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/mixed-ethics-summary"
+      - name: Reassemble temporary database
         env:
-          StuId: ${{ secrets.STUID }}
-          UISPsw: ${{ secrets.UISPSW }}
-        run: python -u scripts/diagnose_playback_metadata.py
+          STUID: ${{ secrets.STUID }}
+          UISPSW: ${{ secrets.UISPSW }}
+        run: >-
+          python scripts/db_shard.py reassemble
+          "$RUNNER_TEMP/mixed-ethics-summary/data"
+          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
+      - name: Inspect counts and matches without printing lesson content
+        timeout-minutes: 10
+        run: >-
+          python -u scripts/diagnose_mixed_ethics_summary.py
+          "$RUNNER_TEMP/mixed-ethics-summary/snapshot.db"
+      - name: Delete temporary encrypted and decrypted database files
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/mixed-ethics-summary"
