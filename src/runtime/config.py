@@ -164,10 +164,10 @@ VIDEO_DOWNLOAD_CONCURRENCY = int(
     os.environ.get("VIDEO_DOWNLOAD_CONCURRENCY", "2")
 )
 
-# 优先使用通过完整性检查的官方字幕；缺失或不完整时回退 ASR。
-# 设置 USE_OFFICIAL_TRANSCRIPT=0 可关闭。
+# 默认从实际录音转写：官方字幕可能内容完整却属于另一门课。
+# 确认字幕来源可靠后，可设置 USE_OFFICIAL_TRANSCRIPT=1 显式启用。
 USE_OFFICIAL_TRANSCRIPT = (
-    os.environ.get("USE_OFFICIAL_TRANSCRIPT", "true").strip().lower()
+    os.environ.get("USE_OFFICIAL_TRANSCRIPT", "false").strip().lower()
     in ("1", "true", "yes")
 )
 

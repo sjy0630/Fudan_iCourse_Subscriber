@@ -37,10 +37,13 @@ class OfficialTranscriptTests(unittest.TestCase):
         ]
         self.assertFalse(LectureRunner._official_transcript_usable(segments))
 
-    def test_enabled_by_default_and_can_be_explicitly_disabled(self):
+    def test_disabled_by_default_and_requires_explicit_opt_in(self):
         try:
             with patch.dict(os.environ):
                 os.environ.pop('USE_OFFICIAL_TRANSCRIPT', None)
+                importlib.reload(config)
+                self.assertFalse(config.USE_OFFICIAL_TRANSCRIPT)
+                os.environ['USE_OFFICIAL_TRANSCRIPT'] = '1'
                 importlib.reload(config)
                 self.assertTrue(config.USE_OFFICIAL_TRANSCRIPT)
                 os.environ['USE_OFFICIAL_TRANSCRIPT'] = '0'
@@ -48,6 +51,30 @@ class OfficialTranscriptTests(unittest.TestCase):
                 self.assertFalse(config.USE_OFFICIAL_TRANSCRIPT)
         finally:
             importlib.reload(config)
+
+    def test_default_ignores_complete_but_wrong_course_captions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            db = Database(str(Path(directory) / 'test.db'))
+            try:
+                db.insert_lecture('1', 'course', 'Ethics lecture', '2026-10-14')
+                client, scheduler, transcriber = Mock(), Mock(), Mock()
+                client.get_transcript_segments.return_value = [
+                    {'start_ms': 0, 'end_ms': 60000,
+                     'text': '巴厘岛的酒店，游泳池，标准间。'}]
+                transcriber.transcribe_tail.return_value = ('道德与法治课程录音', [])
+                runner = LectureRunner(client, db, scheduler, transcriber, Mock(), Mock())
+                with patch.dict(os.environ):
+                    os.environ.pop('USE_OFFICIAL_TRANSCRIPT', None)
+                    importlib.reload(config)
+                    self.assertTrue(runner._needs_audio('1'))
+                    self.assertEqual(runner._get_transcript(None, 'course', '1'),
+                                     ('道德与法治课程录音', []))
+                client.get_transcript_segments.assert_not_called()
+                transcriber.transcribe_tail.assert_called_once()
+                self.assertEqual(db.get_lecture('1')['transcript'], '道德与法治课程录音')
+            finally:
+                importlib.reload(config)
+                db.conn.close()
 
     def test_complete_captions_skip_audio_and_persist_text(self):
         with tempfile.TemporaryDirectory() as directory:

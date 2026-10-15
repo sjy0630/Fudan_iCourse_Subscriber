@@ -276,9 +276,9 @@ class LectureRunner:
                         sub_id: str) -> tuple[Optional[str], Optional[list]]:
         """Return (transcript, segments) or (None, None) on skip.
 
-        Tries the official iCourse transcript first — when available and
-        complete-enough (no >20 min silence gaps) it replaces the ASR
-        step entirely, saving ~5 min of CPU time per lecture.
+        Uses audio ASR by default. Official iCourse captions are tried first
+        only when explicitly enabled; their completeness checks cannot
+        verify that the content belongs to the requested lecture.
         """
         if existing and existing.get("transcript"):
             self._reporter.info(
