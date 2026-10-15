@@ -1,5 +1,6 @@
 """Read-only metadata inspection. No media requests or raw URL logging."""
 import contextlib
+from datetime import datetime, timezone, timedelta
 import json
 import os
 from pathlib import Path
@@ -146,6 +147,15 @@ def main():
                       "api_code": payload.get("code") if isinstance(payload.get("code"), (int, float)) else None,
                       "message_flags": [phrase for phrase in ("未到开放时间", "暂无", "未找到", "成功")
                                         if phrase in str(payload.get("msg", ""))]}
+            details = payload.get("data") or {}
+            open_at = details.get("replay_open_at")
+            if isinstance(open_at, (int, float)) and open_at > 0:
+                try:
+                    seconds = open_at / 1000 if open_at > 100000000000 else open_at
+                    report["replay_open_at_shanghai"] = datetime.fromtimestamp(
+                        seconds, timezone(timedelta(hours=8))).isoformat()
+                except (ValueError, OverflowError, OSError):
+                    report["replay_open_at_valid"] = False
             report.update(summarize(payload.get("data")))
             emit(report)
         except Exception as exc:
