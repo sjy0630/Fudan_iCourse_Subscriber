@@ -1,4 +1,4 @@
-"""Read-only source statistics for the ethics lecture on 2026-09-09.
+"""Read-only source statistics for the ethics lecture on 2026-10-14.
 
 Only request official transcript JSON and the PPT metadata list. Never request
 media/images, call a model, write the database, or print source text/URLs/IDs.
@@ -18,8 +18,8 @@ from urllib.parse import urlsplit
 from diagnose_playback_metadata import login, quiet, safe_key
 
 COURSE_ID = "38713"
-DATE = "2026-09-09"
-KEYWORDS = ("概率", "二项", "超几何", "生日", "泊松", "阿多诺", "马克思", "法治", "道德", "美学")
+DATE = "2026-10-14"
+KEYWORDS = ("巴厘岛", "听写", "游泳池", "标准间", "烹饪", "课文", "语法", "法治", "道德", "法律", "理想", "人生")
 SHANGHAI = timezone(timedelta(hours=8))
 
 
@@ -221,7 +221,7 @@ def main(db_path):
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA query_only=ON")
         targets = [dict(row) for row in conn.execute(
-            "SELECT sub_id, transcript FROM lectures WHERE course_id=? "
+            "SELECT sub_id, transcript, summary, processed_at FROM lectures WHERE course_id=? "
             "AND (date=? OR sub_title LIKE ?) ORDER BY sub_id",
             (COURSE_ID, DATE, DATE + "%"))]
         for target in targets:
@@ -239,6 +239,11 @@ def main(db_path):
     for index, target in enumerate(targets, start=1):
         target_label = f"lecture_{index}"
         sub_id = target["sub_id"]
+        emit("stored_lecture", sub_id=sub_id, processed_at=target["processed_at"],
+             transcript_chars=len(target["transcript"] or ""),
+             summary_chars=len(target["summary"] or ""),
+             transcript_keywords=counts(target["transcript"] or ""),
+             summary_keywords=counts(target["summary"] or ""))
         try:
             def fetch_transcript():
                 response = client.vpn.get(

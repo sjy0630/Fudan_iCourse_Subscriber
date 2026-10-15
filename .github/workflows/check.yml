@@ -1,31 +1,31 @@
-name: Verify analog October 12 retry
+name: Diagnose ethics October 14 source
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  verify:
+  diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install pycryptodome
-      - name: Compare backup and saved database read-only
+      - run: pip install pycryptodome requests
+      - name: Read encrypted database and compare source metadata
         env:
           STUID: ${{ secrets.STUID }}
           UISPSW: ${{ secrets.UISPSW }}
+          StuId: ${{ secrets.STUID }}
+          UISPsw: ${{ secrets.UISPSW }}
         run: |
-          mkdir -p "$RUNNER_TEMP/backlog-verify/backup" "$RUNNER_TEMP/backlog-verify/latest"
-          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data +refs/heads/backup/analog-oct12-recovery-38395171456:refs/remotes/origin/ethics-backup
-          git rev-parse refs/remotes/origin/data refs/remotes/origin/ethics-backup
-          git archive refs/remotes/origin/ethics-backup data | tar -x -C "$RUNNER_TEMP/backlog-verify/backup"
-          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/backlog-verify/latest"
-          python scripts/db_shard.py reassemble "$RUNNER_TEMP/backlog-verify/backup/data" "$RUNNER_TEMP/backlog-verify/backup.db"
-          python scripts/db_shard.py reassemble "$RUNNER_TEMP/backlog-verify/latest/data" "$RUNNER_TEMP/backlog-verify/latest.db"
-          python scripts/verify_backlog_recovery.py "$RUNNER_TEMP/backlog-verify/backup.db" "$RUNNER_TEMP/backlog-verify/latest.db"
-      - name: Delete temporary databases
+          mkdir -p "$RUNNER_TEMP/ethics-source"
+          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
+          git rev-parse refs/remotes/origin/data
+          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/ethics-source"
+          python scripts/db_shard.py reassemble "$RUNNER_TEMP/ethics-source/data" "$RUNNER_TEMP/ethics-source/source.db"
+          python scripts/diagnose_ethics_source.py "$RUNNER_TEMP/ethics-source/source.db"
+      - name: Delete temporary database
         if: always()
-        run: rm -rf "$RUNNER_TEMP/backlog-verify"
+        run: rm -rf "$RUNNER_TEMP/ethics-source"
