@@ -13,8 +13,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api.icourse import ICourseClient
 from src.api.webvpn import WebVPNSession
 
-COURSE_ID = "37664"
-SUB_ID = "680154"
+COURSE_ID = "38713"
+SUB_ID = "682860"
 
 
 def emit(data):

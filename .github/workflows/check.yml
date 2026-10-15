@@ -1,4 +1,4 @@
-name: Diagnose ethics October 14 source
+name: Diagnose ethics October 14 playback availability
 on:
   workflow_dispatch:
 permissions:
@@ -13,17 +13,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pycryptodome requests
-      - name: Read encrypted database and compare source metadata
+      - name: Inspect playback metadata only
         env:
-          STUID: ${{ secrets.STUID }}
-          UISPSW: ${{ secrets.UISPSW }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/ethics-source"
-          git fetch --depth=1 origin +refs/heads/data:refs/remotes/origin/data
-          git rev-parse refs/remotes/origin/data
-          git archive refs/remotes/origin/data data | tar -x -C "$RUNNER_TEMP/ethics-source"
-          python scripts/db_shard.py reassemble "$RUNNER_TEMP/ethics-source/data" "$RUNNER_TEMP/ethics-source/source.db"
-          StuId="$STUID" UISPsw="$UISPSW" python scripts/diagnose_ethics_source.py "$RUNNER_TEMP/ethics-source/source.db"
-      - name: Delete temporary database
-        if: always()
-        run: rm -rf "$RUNNER_TEMP/ethics-source"
+          StuId: ${{ secrets.STUID }}
+          UISPsw: ${{ secrets.UISPSW }}
+        run: python scripts/diagnose_playback_metadata.py
