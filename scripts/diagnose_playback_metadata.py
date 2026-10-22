@@ -14,8 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.api.icourse import ICourseClient
 from src.api.webvpn import WebVPNSession
 
-TARGETS = (("38049", "687465"), ("38713", "687404"),
-           ("39532", "684054"), ("39532", "688667"))
+TARGETS = (("38713", "687404"), ("39532", "684054"), ("39532", "688667"))
 
 
 def emit(data):
@@ -138,11 +137,24 @@ def main():
             ("sub_detail", "/courseapi/v3/multi-search/get-sub-detail"),
         ):
             try:
-                with quiet():
-                    response = client.vpn.get(client.base_url + route,
-                        params={"course_id": COURSE_ID, "sub_id": SUB_ID})
-                    response.raise_for_status()
-                    payload = response.json()
+                for attempt in range(2):
+                    with quiet():
+                        alive = client.check_alive()
+                    if not alive:
+                        client = login()
+                    try:
+                        with quiet():
+                            response = client.vpn.get(client.base_url + route,
+                                params={"course_id": COURSE_ID, "sub_id": SUB_ID})
+                            response.raise_for_status()
+                            payload = response.json()
+                        break
+                    except Exception:
+                        if attempt:
+                            raise
+                        emit({"course_id": COURSE_ID, "sub_id": SUB_ID,
+                              "endpoint": name, "retry_with_fresh_session": True})
+                        client = login()
                 report = {"course_id": COURSE_ID, "sub_id": SUB_ID, "endpoint": name, "http_status": response.status_code,
                           "response_keys": [safe_key(k) for k in payload],
                           "api_code": payload.get("code") if isinstance(payload.get("code"), (int, float)) else None,
