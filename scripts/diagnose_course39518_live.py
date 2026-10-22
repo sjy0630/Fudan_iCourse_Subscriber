@@ -150,7 +150,32 @@ def summarize_access(payload):
         ],
         "url_counts": result["url_counts"],
         "inspection_truncated": result["inspection_truncated"],
+        "watch_rule": safe_rule(data.get("watch_rule")) if isinstance(data, dict) else None,
     }
+
+
+def safe_rule(value):
+    if not isinstance(value, str) or len(value) > 160:
+        return None
+    if any(marker in value.lower() for marker in ("http", "token", "@", "<", ">")):
+        return "[omitted]"
+    return re.sub(r"\d{4,}", "[number]", value)
+
+
+def course_policy(data):
+    out = {}
+    for key, value in data.items():
+        if not re.search(r"live|watch|public|permission|member|role|student|auth|allow|publish", key, re.I):
+            continue
+        if isinstance(value, bool) or value is None:
+            out[key] = value
+        elif isinstance(value, int) and -1 <= value <= 100:
+            out[key] = value
+        elif isinstance(value, str) and re.fullmatch(r"(?:[0-9]{1,3}|yes|no|true|false)", value):
+            out[key] = value
+        else:
+            out[key] = {"type": type(value).__name__}
+    return out
 
 
 def authenticated_get(client, route, params):
@@ -178,11 +203,17 @@ def main():
     emit({"scope_course": COURSE_ID, "scope_date": TEST_DATE,
           "time_shanghai": datetime.now(timezone(timedelta(hours=8))).isoformat()})
     client = login()
+    # Match the ordinary course-detail page using only this account's own ID.
+    with quiet():
+        own_account = client.get_userinfo().get("account", "")
     client, status, payload = authenticated_get(client,
-        "/courseapi/v3/multi-search/get-course-detail", {"course_id": COURSE_ID})
+        "/courseapi/v3/multi-search/get-course-detail",
+        {"course_id": COURSE_ID, "student": own_account})
     if payload.get("code") != 0:
         emit({"course_lookup": "denied", "http_status": status})
         return
+    emit({"course_policy_fields": course_policy(payload.get("data") or {}),
+          "own_account_parameter_used": bool(own_account)})
     today = []
     for months in (payload.get("data") or {}).get("sub_list", {}).values():
         for days in months.values():
