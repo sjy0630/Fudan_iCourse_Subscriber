@@ -82,3 +82,15 @@ LECTURES_MIGRATION_COLUMNS: list[tuple[str, str]] = [
 PPT_PAGES_MIGRATION_COLUMNS: list[tuple[str, str]] = [
     ("dhash", "TEXT"),
 ]
+
+
+
+def reopen_legacy_empty_transcripts(conn):
+    """Requeue empty ASR output that older runs incorrectly marked done."""
+    conn.execute(
+        """UPDATE lectures SET processed_at = NULL
+           WHERE processed_at IS NOT NULL
+             AND transcript IS NOT NULL AND TRIM(transcript) = ''
+             AND COALESCE(TRIM(summary), '') = ''
+             AND emailed_at IS NULL AND error_stage IS NULL"""
+    )

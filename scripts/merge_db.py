@@ -15,6 +15,7 @@ from src.data.schema import (
     LECTURES_MIGRATION_COLUMNS,
     PPT_PAGES_MIGRATION_COLUMNS,
     SCHEMA_SQL,
+    reopen_legacy_empty_transcripts,
 )
 
 
@@ -65,6 +66,8 @@ def merge(local_path: str, remote_path: str):
 
     try:
         with conn:
+            reopen_legacy_empty_transcripts(conn)
+
             # 1) Courses: upsert
             conn.execute("""
                 INSERT OR REPLACE INTO main.courses (course_id, title, teacher)
@@ -88,7 +91,8 @@ def merge(local_path: str, remote_path: str):
             #    - Error fields: clear if processed, otherwise keep the most info
             conn.execute("""
                 UPDATE main.lectures SET
-                    transcript    = COALESCE(l.transcript,    main.lectures.transcript),
+                    transcript    = CASE WHEN TRIM(l.transcript) <> ''
+                                         THEN l.transcript ELSE main.lectures.transcript END,
                     summary       = COALESCE(l.summary,       main.lectures.summary),
                     summary_model = COALESCE(l.summary_model, main.lectures.summary_model),
                     processed_at  = COALESCE(l.processed_at,  main.lectures.processed_at),

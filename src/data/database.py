@@ -10,6 +10,7 @@ from src.data.schema import (
     LECTURES_MIGRATION_COLUMNS,
     PPT_PAGES_MIGRATION_COLUMNS,
     SCHEMA_SQL,
+    reopen_legacy_empty_transcripts,
 )
 
 
@@ -65,6 +66,8 @@ class Database:
                     self.conn.execute(
                         f"ALTER TABLE ppt_pages ADD COLUMN {col} {typedef}"
                     )
+
+            reopen_legacy_empty_transcripts(self.conn)
 
     def write_meta(self, key: str, value: str):
         """Persist a key-value pair (e.g. COURSE_IDS from CI secret)."""
@@ -189,6 +192,18 @@ class Database:
             rows = self.conn.execute(
                 "SELECT sub_id FROM lectures WHERE course_id = ? AND processed_at IS NOT NULL",
                 (course_id,),
+            ).fetchall()
+        return {row["sub_id"] for row in rows}
+
+    def get_ineligible_sub_ids(self, course_id: str, max_errors: int = 3) -> set[str]:
+        """Exclude completed lectures and exhausted empty-transcript retries."""
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT sub_id FROM lectures
+                   WHERE course_id = ?
+                     AND (processed_at IS NOT NULL
+                          OR (error_stage = 'empty_transcript' AND error_count >= ?))""",
+                (course_id, max_errors),
             ).fetchall()
         return {row["sub_id"] for row in rows}
 
